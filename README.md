@@ -19,7 +19,7 @@ Call the script like so:
 
 I downloaded many of the included `.txt` files from [here](https://www.cs.princeton.edu/courses/archive/spr24/cos126/assignments/chat126/).
 
-Taylor Swift corpus from [here](https://github.com/irenetrampoline/taylor-swift-lyrics/blob/master/all_tswift_lyrics.txt)
+Taylor Swift corpus from [here](https://github.com/irenetrampoline/taylor-swift-lyrics/blob/master/all_tswift_lyrics.txt).
 
 ## TODO
 
