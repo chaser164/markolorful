@@ -93,3 +93,4 @@ The system draws from diverse literary sources:
 - compact nav bar for mobile
 - consider adding a supabase function / reconfiguring history logic to compress data (?)
 - website logo / Title 
+- don't make history time-based, make it word-based!
