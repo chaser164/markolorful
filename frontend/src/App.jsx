@@ -22,6 +22,7 @@ function App() {
   const [hasAnimated, setHasAnimated] = useState(false)
   const [historyData, setHistoryData] = useState([])
   const [historyLoading, setHistoryLoading] = useState(false)
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const colorInputRef = useRef(null)
 
   const API_BASE = CONFIG.API_BASE
@@ -196,6 +197,18 @@ function App() {
     }
   }, [fingerprint, currentWord])
 
+  // Close mobile menu on window resize
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth > 768 && isMobileMenuOpen) {
+        setIsMobileMenuOpen(false)
+      }
+    }
+
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [isMobileMenuOpen])
+
   // Set initial background based on voting status and today's average color with animation
   useEffect(() => {
     if (fingerprint !== null && todaysVoteCount >= 0 && !isLoading) {
@@ -357,20 +370,28 @@ function App() {
     }
   }
 
+  // Switch back to home view
+  const showHome = () => {
+    setCurrentView('home')
+    setIsMobileMenuOpen(false)
+  }
+
   // Switch to history view
   const showHistory = () => {
     setCurrentView('history')
     loadHistory()
+    setIsMobileMenuOpen(false)
   }
 
   // Switch to info view
   const showInfo = () => {
     setCurrentView('info')
+    setIsMobileMenuOpen(false)
   }
 
-  // Switch back to home view
-  const showHome = () => {
-    setCurrentView('home')
+  // Toggle mobile menu
+  const toggleMobileMenu = () => {
+    setIsMobileMenuOpen(!isMobileMenuOpen)
   }
 
   // Get new word (disabled - now shows daily word only)
@@ -401,67 +422,150 @@ function App() {
     )
   }
 
+  // Hamburger icon component
+  const HamburgerIcon = () => (
+    <div className="hamburger-icon">
+      <span></span>
+      <span></span>
+      <span></span>
+    </div>
+  )
+
   // Navbar component
   const Navbar = () => (
-    <div 
-      className="navbar"
-      style={{
-        position: 'static',
-        height: '60px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'flex-start',
-        gap: '40px',
-        paddingLeft: '40px',
-        color: currentView === 'home' ? textColor : '#000000'
-      }}
-    >
-      <button
-        onClick={showHome}
+    <>
+      {/* Desktop Navbar */}
+      <div 
+        className="navbar desktop-navbar"
         style={{
-          background: 'none',
-          border: 'none',
-          fontSize: '20px',
-          fontWeight: currentView === 'home' ? '600' : '400',
-          cursor: 'pointer',
-          color: 'inherit',
-          textDecoration: currentView === 'home' ? 'underline' : 'none',
-          textUnderlineOffset: '4px'
+          position: 'static',
+          height: '60px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'flex-start',
+          gap: '40px',
+          paddingLeft: '40px',
+          color: currentView === 'home' ? textColor : '#000000'
         }}
       >
-        Markolorful
-      </button>
-      <button
-        onClick={showHistory}
-        style={{
-          background: 'none',
-          border: 'none',
-          fontSize: '16px',
-          fontWeight: currentView === 'history' ? '600' : '400',
-          cursor: 'pointer',
-          color: 'inherit',
-          textDecoration: currentView === 'history' ? 'underline' : 'none',
-          textUnderlineOffset: '4px'
-        }}
-      >
-        History
-      </button>
-      <button
-        onClick={showInfo}
-        style={{
-          background: 'none',
-          border: 'none',
-          fontSize: '16px',
-          fontWeight: currentView === 'info' ? '600' : '400',
-          cursor: 'pointer',
-          color: 'inherit',
-          textDecoration: currentView === 'info' ? 'underline' : 'none',
-          textUnderlineOffset: '4px'
-        }}
-      >
-        About
-      </button>
+        <button
+          onClick={showHome}
+          style={{
+            background: 'none',
+            border: 'none',
+            fontSize: '18px',
+            fontWeight: currentView === 'home' ? '600' : '400',
+            cursor: 'pointer',
+            color: 'inherit',
+            textDecoration: currentView === 'home' ? 'underline' : 'none',
+            textUnderlineOffset: '4px'
+          }}
+        >
+          Markolorful
+        </button>
+        <button
+          onClick={showHistory}
+          style={{
+            background: 'none',
+            border: 'none',
+            fontSize: '18px',
+            fontWeight: currentView === 'history' ? '600' : '400',
+            cursor: 'pointer',
+            color: 'inherit',
+            textDecoration: currentView === 'history' ? 'underline' : 'none',
+            textUnderlineOffset: '4px'
+          }}
+        >
+          History
+        </button>
+        <button
+          onClick={showInfo}
+          style={{
+            background: 'none',
+            border: 'none',
+            fontSize: '18px',
+            fontWeight: currentView === 'info' ? '600' : '400',
+            cursor: 'pointer',
+            color: 'inherit',
+            textDecoration: currentView === 'info' ? 'underline' : 'none',
+            textUnderlineOffset: '4px'
+          }}
+        >
+          About
+        </button>
       </div>
+
+      {/* Mobile Navbar */}
+      <div 
+        className="navbar mobile-navbar"
+        style={{
+          position: 'static',
+          height: '60px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingLeft: '20px',
+          paddingRight: '20px',
+          color: currentView === 'home' ? textColor : '#000000'
+        }}
+      >
+        <span
+          style={{
+            fontSize: '18px',
+            fontWeight: '600',
+            color: 'inherit'
+          }}
+        >
+          {currentView === 'home' ? 'Markolorful' : 
+           currentView === 'history' ? 'History' : 
+           currentView === 'info' ? 'About' : 'Markolorful'}
+        </span>
+        
+        <button
+          onClick={toggleMobileMenu}
+          className="hamburger-button"
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            padding: '8px',
+            color: 'inherit'
+          }}
+        >
+          <HamburgerIcon />
+        </button>
+      </div>
+
+      {/* Mobile Menu Overlay */}
+      {isMobileMenuOpen && (
+        <>
+          <div 
+            className="mobile-menu-overlay"
+            onClick={toggleMobileMenu}
+          />
+          <div className="mobile-menu">
+            <button
+              onClick={showHome}
+              className={currentView === 'home' ? 'active' : ''}
+            >
+              Markolorful
+            </button>
+            <button
+              onClick={showHistory}
+              className={currentView === 'history' ? 'active' : ''}
+            >
+              History
+            </button>
+            <button
+              onClick={showInfo}
+              className={currentView === 'info' ? 'active' : ''}
+            >
+              About
+            </button>
+          </div>
+        </>
+      )}
+    </>
   )
 
   return (
