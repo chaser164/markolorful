@@ -92,3 +92,4 @@ The system draws from diverse literary sources:
 - same size nav bar
 - compact nav bar for mobile
 - consider adding a supabase function / reconfiguring history logic to compress data (?)
+- website logo / Title 
