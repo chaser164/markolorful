@@ -87,3 +87,8 @@ The system draws from diverse literary sources:
 - [Princeton CS Markov Assignment](https://www.cs.princeton.edu/courses/archive/spring05/cos126/assignments/markov.html) - Original inspiration for markov chain implementation
 - [Princeton Text Corpus](https://www.cs.princeton.edu/courses/archive/spr24/cos126/assignments/chat126/) - Source for many training texts
 - [Taylor Swift Lyrics](https://github.com/irenetrampoline/taylor-swift-lyrics/blob/master/all_tswift_lyrics.txt) - Contemporary music corpus
+
+# TODO
+- same size nav bar
+- compact nav bar for mobile
+- consider adding a supabase function / reconfiguring history logic to compress data (?)
