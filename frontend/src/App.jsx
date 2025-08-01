@@ -830,7 +830,7 @@ function App() {
               </p>
               
               {wordData && (
-                <div style={{ margin: '30px 0', padding: '20px', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
+                <div style={{ margin: '30px 0', padding: '20px', backgroundColor: '#f0f8ff', borderRadius: '8px', border: '2px solid #e1f5fe' }}>
                   <h3 style={{ margin: '0 0 10px 0', fontSize: '20px', fontWeight: '500' }}>Today's Word</h3>
                   <p style={{ margin: '5px 0', fontSize: '16px' }}>
                     <strong>{wordData.word}</strong> • Day {wordData.index + 1} • {wordData.date}
@@ -849,10 +849,18 @@ function App() {
                 The percentage similarity shows how close your vote is to the community blend.
               </p>
 
+              < br />
+
+              <p>
+                To keep voting fair while maintaining a frictionless experience, we use <strong>browser fingerprinting</strong> to ensure each device can vote only once per word. This creates a low-friction, cooperative experience with no sign-in required - just you, the word, and your color choice. While determined users could potentially work around this system, my hope is that users will vote with integrity!
+              </p>
+
               <br />
               <p>
                 Words are created using <strong>Markov chains</strong> - an algorithm that learns patterns from classic literature, song lyrics, and other texts to generate new, unique words that sound naturally interesting.
               </p>
+
+              <br />
               
               <p>
                 Visit the History tab to see how colors have evolved over time - each word gets its own blended color timeline entry.
