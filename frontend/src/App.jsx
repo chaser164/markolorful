@@ -14,7 +14,8 @@ function App() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
   const [fingerprint, setFingerprint] = useState(null)
-  const [todaysColors, setTodaysColors] = useState([])
+  const [todaysVoteCount, setTodaysVoteCount] = useState(0)
+  const [todaysAverageColor, setTodaysAverageColor] = useState(null)
   const [isVoting, setIsVoting] = useState(false)
   const [userVotedColor, setUserVotedColor] = useState(null)
   const [currentView, setCurrentView] = useState('home') // 'home', 'history', or 'info'
@@ -42,44 +43,29 @@ function App() {
     initFingerprint()
   }, [])
 
-  // Get current voting period based on daily reset hour UTC boundary (matches backend logic)
-  const getCurrentVotingPeriod = () => {
-    const nowUtc = new Date()
-    
-    let currentBoundary
-    if (nowUtc.getUTCHours() < CONFIG.DAILY_RESET_HOUR_UTC) {
-      // Before reset hour UTC, use previous day's boundary
-      currentBoundary = new Date(nowUtc)
-      currentBoundary.setUTCDate(currentBoundary.getUTCDate() - 1)
-      currentBoundary.setUTCHours(CONFIG.DAILY_RESET_HOUR_UTC, 0, 0, 0)
-    } else {
-      // After reset hour UTC, use today's boundary
-      currentBoundary = new Date(nowUtc)
-      currentBoundary.setUTCHours(CONFIG.DAILY_RESET_HOUR_UTC, 0, 0, 0)
-    }
-    
-    return currentBoundary.toISOString().split('T')[0] // YYYY-MM-DD format
-  }
+
 
   // Check voting status from backend (and sync with localStorage)
   const checkVotingStatus = async () => {
     if (!fingerprint) return
     
     try {
-      // Check with backend first
-      const response = await fetch(`${API_BASE}/check-vote-status?fingerprint=${encodeURIComponent(fingerprint)}`)
+      // Check with backend first (only if we have a current word)
+      if (!currentWord) return
+      
+      const response = await fetch(`${API_BASE}/check-vote-status?fingerprint=${encodeURIComponent(fingerprint)}&word=${encodeURIComponent(currentWord)}`)
       const data = await response.json()
       
       if (response.ok) {
-        const { hasVoted, userVote, votingPeriod } = data
+        const { hasVoted, userVote, word } = data
         
         // Update state based on backend response
         setHasVotedToday(hasVoted)
         setUserVotedColor(hasVoted ? userVote : null)
         
         // Sync localStorage with backend state
-        const voteKey = `vote_${fingerprint}_${votingPeriod}`
-        const colorKey = `color_${fingerprint}_${votingPeriod}`
+        const voteKey = `vote_${fingerprint}_${word}`
+        const colorKey = `color_${fingerprint}_${word}`
         
         if (hasVoted) {
           localStorage.setItem(voteKey, 'true')
@@ -91,9 +77,9 @@ function App() {
           localStorage.removeItem(colorKey)
         }
         
-        // Clean up old localStorage entries from different voting periods
+        // Clean up old localStorage entries from different words
         Object.keys(localStorage).forEach(key => {
-          if ((key.startsWith('vote_') || key.startsWith('color_')) && !key.includes(votingPeriod)) {
+          if ((key.startsWith('vote_') || key.startsWith('color_')) && !key.includes(word)) {
             localStorage.removeItem(key)
           }
         })
@@ -111,9 +97,10 @@ function App() {
   
   // Fallback function for localStorage-only check
   const fallbackToLocalStorageCheck = () => {
-    const votingPeriod = getCurrentVotingPeriod()
-    const voteKey = `vote_${fingerprint}_${votingPeriod}`
-    const colorKey = `color_${fingerprint}_${votingPeriod}`
+    if (!currentWord) return
+    
+    const voteKey = `vote_${fingerprint}_${currentWord}`
+    const colorKey = `color_${fingerprint}_${currentWord}`
     const hasVoted = localStorage.getItem(voteKey) === 'true'
     
     setHasVotedToday(hasVoted)
@@ -155,23 +142,10 @@ function App() {
     return Math.round((1 - actualDiff / maxDiff) * 100)
   }
 
-  // Calculate average color from all today's votes
-  const calculateAverageColor = (colors) => {
-    if (!colors || colors.length === 0) return '#ffffff'
-    
-    const totals = colors.reduce((acc, color) => ({
-      r: acc.r + color.r,
-      g: acc.g + color.g,
-      b: acc.b + color.b
-    }), { r: 0, g: 0, b: 0 })
-    
-    const avg = {
-      r: Math.round(totals.r / colors.length),
-      g: Math.round(totals.g / colors.length),
-      b: Math.round(totals.b / colors.length)
-    }
-    
-    return rgbToHex(avg.r, avg.g, avg.b)
+  // Get average color hex from RGB object
+  const getAverageColorHex = (averageColor) => {
+    if (!averageColor) return '#ffffff'
+    return rgbToHex(averageColor.r, averageColor.g, averageColor.b)
   }
 
   // Load daily word from backend
@@ -186,6 +160,8 @@ function App() {
         const data = await response.json()
         setWordData(data)
         setCurrentWord(data.word)
+        setTodaysVoteCount(data.vote_count || 0)
+        setTodaysAverageColor(data.average_color)
         setError(null)
       } catch (error) {
         console.error('Error loading daily word:', error)
@@ -198,54 +174,36 @@ function App() {
     loadDailyWord()
   }, [])
 
-  // Load today's colors 
-  useEffect(() => {
-    const loadTodaysColors = async () => {
-      try {
-        const response = await fetch(`${API_BASE}/todays-votes`)
-        if (response.ok) {
-          const data = await response.json()
-          setTodaysColors(data.votes || [])
-        }
-      } catch (error) {
-        console.error('Error loading today\'s colors:', error)
-        // Fallback to empty array
-        setTodaysColors([])
-      }
-    }
-    loadTodaysColors()
-  }, [])
+  // Today's colors will be loaded with the word data
 
-  // Check voting status when fingerprint is ready
+  // Check voting status when fingerprint and word are ready
   useEffect(() => {
-    if (fingerprint) {
+    if (fingerprint && currentWord) {
       // Clear any old localStorage entries with incorrect format (one-time cleanup)
-      const currentPeriod = getCurrentVotingPeriod()
-      const correctKey = `vote_${fingerprint}_${currentPeriod}`
+      const correctKey = `vote_${fingerprint}_${currentWord}`
+      const correctColorKey = `color_${fingerprint}_${currentWord}`
       
-             // Remove any keys that don't match the current expected format
-       const correctColorKey = `color_${fingerprint}_${currentPeriod}`
-       Object.keys(localStorage).forEach(key => {
-         if (key.startsWith(`vote_${fingerprint}_`) && key !== correctKey) {
-           localStorage.removeItem(key)
-         }
-         if (key.startsWith(`color_${fingerprint}_`) && key !== correctColorKey) {
-           localStorage.removeItem(key)
-         }
-       })
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith(`vote_${fingerprint}_`) && key !== correctKey) {
+          localStorage.removeItem(key)
+        }
+        if (key.startsWith(`color_${fingerprint}_`) && key !== correctColorKey) {
+          localStorage.removeItem(key)
+        }
+      })
       
       checkVotingStatus()
     }
-  }, [fingerprint])
+  }, [fingerprint, currentWord])
 
-  // Set initial background based on voting status and today's colors with animation
+  // Set initial background based on voting status and today's average color with animation
   useEffect(() => {
-    if (fingerprint !== null && todaysColors.length >= 0 && !isLoading) {
+    if (fingerprint !== null && todaysVoteCount >= 0 && !isLoading) {
       // Immediate background color to prevent flash
-      if (hasVotedToday && todaysColors.length > 0) {
+      if (hasVotedToday && todaysVoteCount > 0) {
         // User has voted - set to average of all today's votes
-        const averageColor = calculateAverageColor(todaysColors)
-        setBackgroundColor(averageColor)
+        const averageColorHex = getAverageColorHex(todaysAverageColor)
+        setBackgroundColor(averageColorHex)
       } else {
         // User hasn't voted or no votes yet - set to white background
         setBackgroundColor('#ffffff')
@@ -256,7 +214,7 @@ function App() {
         setHasAnimated(true)
       }, 50)
     }
-  }, [fingerprint, todaysColors, hasVotedToday, isLoading])
+  }, [fingerprint, todaysVoteCount, todaysAverageColor, hasVotedToday, isLoading])
 
   // Calculate text color based on background brightness
   const getContrastColor = (hexColor) => {
@@ -316,6 +274,7 @@ function App() {
           r: rgb.r,
           g: rgb.g,
           b: rgb.b,
+          word: currentWord,
           fingerprint: fingerprint
         })
       })
@@ -327,18 +286,30 @@ function App() {
 
       const result = await response.json()
       
-      // Mark as voted in localStorage using voting period
-      const votingPeriod = getCurrentVotingPeriod()
-      const voteKey = `vote_${fingerprint}_${votingPeriod}`
-      const colorKey = `color_${fingerprint}_${votingPeriod}`
+      // Mark as voted in localStorage using word
+      const voteKey = `vote_${fingerprint}_${currentWord}`
+      const colorKey = `color_${fingerprint}_${currentWord}`
       localStorage.setItem(voteKey, 'true')
       localStorage.setItem(colorKey, JSON.stringify({ r: rgb.r, g: rgb.g, b: rgb.b }))
       setHasVotedToday(true)
       
-      // Add the new color to today's colors and store user's vote
-      const newColors = [...todaysColors, { r: rgb.r, g: rgb.g, b: rgb.b, created_at: new Date().toISOString() }]
-      setTodaysColors(newColors)
+      // Update vote count and store user's vote
+      setTodaysVoteCount(todaysVoteCount + 1)
       setUserVotedColor({ r: rgb.r, g: rgb.g, b: rgb.b })
+      
+      // Update average color calculation
+      if (todaysAverageColor) {
+        const newTotalVotes = todaysVoteCount + 1
+        const newAverage = {
+          r: Math.round((todaysAverageColor.r * todaysVoteCount + rgb.r) / newTotalVotes),
+          g: Math.round((todaysAverageColor.g * todaysVoteCount + rgb.g) / newTotalVotes),
+          b: Math.round((todaysAverageColor.b * todaysVoteCount + rgb.b) / newTotalVotes)
+        }
+        setTodaysAverageColor(newAverage)
+      } else {
+        // First vote
+        setTodaysAverageColor({ r: rgb.r, g: rgb.g, b: rgb.b })
+      }
       
       return result
     } catch (error) {
@@ -353,12 +324,9 @@ function App() {
   const confirmColor = async () => {
     try {
       await submitColorVote(selectedColor)
-      // Set background to average of all today's votes (including the new one)
-      const rgb = hexToRgb(selectedColor)
-      const newColors = [...todaysColors, { r: rgb.r, g: rgb.g, b: rgb.b, created_at: new Date().toISOString() }]
-      const averageColor = calculateAverageColor(newColors)
-      setBackgroundColor(averageColor)
-      setUserVotedColor({ r: rgb.r, g: rgb.g, b: rgb.b })
+      // Set background to new average color
+      const averageColorHex = getAverageColorHex(todaysAverageColor)
+      setBackgroundColor(averageColorHex)
       setShowColorPicker(false)
       // alert('Your color vote has been recorded! Thank you for participating.')
     } catch (error) {
@@ -544,7 +512,7 @@ function App() {
                   border: `2px solid ${textColor}`
                 }}
               >
-                Vote for a Color
+                Choose This Word's Color
               </button>
             )}
 
@@ -582,7 +550,7 @@ function App() {
             )}
 
             {/* Show vote comparison after user has voted */}
-            {hasVotedToday && userVotedColor && todaysColors.length > 0 && (
+            {hasVotedToday && userVotedColor && todaysVoteCount > 0 && (
               <div className={`vote-comparison ${!isLoading ? 'fade-in-up' : ''}`}>
                 <div className="comparison-row">
                   <div className="color-section">
@@ -606,12 +574,12 @@ function App() {
                   <div className="color-section">
                     <p className="color-label">Community Blend</p>
                     {(() => {
-                      const avgColor = calculateAverageColor(todaysColors)
+                      const avgColorHex = getAverageColorHex(todaysAverageColor)
                       return (
                         <div 
                           className="color-box"
                           style={{
-                            backgroundColor: avgColor,
+                            backgroundColor: avgColorHex,
                             width: '80px',
                             height: '80px',
                             borderRadius: '12px',
@@ -619,7 +587,7 @@ function App() {
                             cursor: 'pointer',
                             boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)'
                           }}
-                          onClick={() => setBackgroundColor(avgColor)}
+                          onClick={() => setBackgroundColor(avgColorHex)}
                           title="Click to use community average as background"
                         />
                       )
@@ -629,16 +597,14 @@ function App() {
                 
                 <div className="similarity-stats">
                   {(() => {
-                    const avgColor = calculateAverageColor(todaysColors)
-                    const avgRgb = hexToRgb(avgColor)
-                    const similarity = calculateColorSimilarity(userVotedColor, avgRgb)
+                    const similarity = todaysAverageColor ? calculateColorSimilarity(userVotedColor, todaysAverageColor) : 100
                     return (
                       <>
                         <div className="similarity-percentage">
                           {similarity}% similarity
                         </div>
                         <div className="vote-count">
-                          {todaysColors.length} vote{todaysColors.length !== 1 ? 's' : ''} today
+                          {todaysVoteCount} vote{todaysVoteCount !== 1 ? 's' : ''} today
                         </div>
                       </>
                     )
@@ -751,9 +717,9 @@ function App() {
             margin: '0 auto',
             padding: '2rem'
           }}>
-            <h1 style={{ color: '#000000', fontSize: '32px', fontWeight: '300', letterSpacing: '-0.02em', textAlign: 'left', width: '100%', marginBottom: '2rem' }}>
+            {/* <h1 style={{ color: '#000000', fontSize: '32px', fontWeight: '300', letterSpacing: '-0.02em', textAlign: 'left', width: '100%', marginBottom: '2rem' }}>
               About
-            </h1>
+            </h1> */}
             <div style={{ color: '#000000', fontSize: '18px', textAlign: 'left', lineHeight: '1.6', width: '100%' }}>
               <p>
                 Welcome to <strong>Markolorful</strong>! Each day brings a new word generated using Markov chains, and the community votes on colors to create a collective visual experience.
@@ -767,7 +733,7 @@ function App() {
                   </p>
                   {wordData.next_change_utc && (
                     <p style={{ margin: '10px 0 0 0', fontSize: '14px', opacity: 0.8 }}>
-                      Next word: {new Date(wordData.next_change_utc).toLocaleString()}{' '}
+                      Next word: {new Date(wordData.next_change_utc).toLocaleDateString('en-CA')} at {new Date(wordData.next_change_utc).toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit'})}{' '}
                       ({Intl.DateTimeFormat().resolvedOptions().timeZone})
                     </p>
                   )}
@@ -793,7 +759,7 @@ function App() {
                 <p style={{ margin: '10px 0', fontSize: '16px' }}>
                   This project is open source! Check out the code, contribute features, or learn how the Markov chain algorithm works on{' '}
                   <a 
-                    href="https://github.com/chasereynders/markov-chain"
+                    href="https://github.com/chaser164/markolorful"
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{ color: '#1976d2', textDecoration: 'underline' }}

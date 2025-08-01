@@ -11,6 +11,25 @@ const supabase = createClient(
 // Configuration - construct start date from config
 const START_DATE = new Date(`${CONFIG.START_DATE}T${CONFIG.DAILY_RESET_HOUR_UTC.toString().padStart(2, '0')}:00:00Z`);
 
+// Calculate average color from votes
+function calculateAverageColor(votes) {
+  if (!votes || votes.length === 0) {
+    return null;
+  }
+  
+  const totals = votes.reduce((acc, vote) => ({
+    r: acc.r + vote.r,
+    g: acc.g + vote.g,
+    b: acc.b + vote.b
+  }), { r: 0, g: 0, b: 0 });
+  
+  return {
+    r: Math.round(totals.r / votes.length),
+    g: Math.round(totals.g / votes.length),
+    b: Math.round(totals.b / votes.length)
+  };
+}
+
 async function getDailyWord() {
   try {
     // Get total word count from database
@@ -51,6 +70,17 @@ async function getDailyWord() {
 
     if (wordError) throw wordError;
 
+    // Get all votes for this word (just need RGB values for averaging)
+    const { data: votes, error: votesError } = await supabase
+      .from('votes')
+      .select('r, g, b')
+      .eq('word_id', wordData.id);
+
+    if (votesError) throw votesError;
+
+    // Calculate average color
+    const averageColor = calculateAverageColor(votes);
+
     // Calculate next change time
     const nextBoundary = new Date(currentBoundary);
     nextBoundary.setUTCDate(nextBoundary.getUTCDate() + 1);
@@ -62,7 +92,9 @@ async function getDailyWord() {
       total_words: count,
       date: currentBoundary.toISOString().split('T')[0],
       days_since_epoch: daysSinceEpoch,
-      next_change_utc: nextBoundary.toISOString()
+      next_change_utc: nextBoundary.toISOString(),
+      vote_count: votes ? votes.length : 0,
+      average_color: averageColor
     };
   } catch (error) {
     console.error('Error fetching daily word:', error);

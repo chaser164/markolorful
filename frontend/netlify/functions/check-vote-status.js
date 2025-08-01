@@ -1,5 +1,4 @@
 import { createClient } from '@supabase/supabase-js'
-import { CONFIG } from '../../src/config.js'
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -7,19 +6,26 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 )
 
-// Function to get the current voting period (daily reset hour UTC boundary)
-function getCurrentVotingPeriod() {
-  const now = new Date()
-  const utcHour = now.getUTCHours()
-  
-  if (utcHour >= CONFIG.DAILY_RESET_HOUR_UTC) {
-    // Same day (after reset hour UTC)
-    return now.toISOString().split('T')[0]
-  } else {
-    // Previous day (before reset hour UTC)
-    const yesterday = new Date(now)
-    yesterday.setUTCDate(yesterday.getUTCDate() - 1)
-    return yesterday.toISOString().split('T')[0]
+async function getWordId(word) {
+  try {
+    // Look up the word ID by the word text
+    const { data: wordData, error: wordError } = await supabase
+      .from('words')
+      .select('id')
+      .eq('word', word)
+      .single();
+
+    if (wordError) {
+      if (wordError.code === 'PGRST116') {
+        throw new Error('Word not found');
+      }
+      throw wordError;
+    }
+
+    return wordData.id;
+  } catch (error) {
+    console.error('Error getting word ID:', error);
+    throw error;
   }
 }
 
@@ -49,6 +55,7 @@ export const handler = async (event, context) => {
 
   try {
     const fingerprint = event.queryStringParameters?.fingerprint
+    const word = event.queryStringParameters?.word
     
     if (!fingerprint) {
       return {
@@ -58,14 +65,23 @@ export const handler = async (event, context) => {
       }
     }
 
-    const currentVotingPeriod = getCurrentVotingPeriod()
+    if (!word) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ error: 'Word is required' })
+      }
+    }
 
-    // Check if user has already voted today
+    // Get the word ID
+    const wordId = await getWordId(word);
+
+    // Check if user has already voted for this word
     const { data: existingVote, error: voteError } = await supabase
       .from('votes')
       .select('r, g, b')
       .eq('fingerprint', fingerprint)
-      .eq('vote_date', currentVotingPeriod)
+      .eq('word_id', wordId)
       .single()
 
     if (voteError && voteError.code !== 'PGRST116') {
@@ -78,12 +94,22 @@ export const handler = async (event, context) => {
       body: JSON.stringify({
         hasVoted: !!existingVote,
         userVote: existingVote ? { r: existingVote.r, g: existingVote.g, b: existingVote.b } : null,
-        votingPeriod: currentVotingPeriod
+        word: word,
+        word_id: wordId
       })
     }
 
   } catch (error) {
     console.error('Error checking vote status:', error)
+    
+    if (error.message === 'Word not found') {
+      return {
+        statusCode: 404,
+        headers,
+        body: JSON.stringify({ error: 'Word not found' })
+      }
+    }
+
     return {
       statusCode: 500,
       headers,

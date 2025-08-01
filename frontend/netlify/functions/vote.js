@@ -1,6 +1,5 @@
 // netlify/functions/vote.js
 import { createClient } from '@supabase/supabase-js';
-import { CONFIG } from '../../src/config.js';
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -8,72 +7,40 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Configuration - construct start date from config
-const START_DATE = new Date(`${CONFIG.START_DATE}T${CONFIG.DAILY_RESET_HOUR_UTC.toString().padStart(2, '0')}:00:00Z`);
-
-function getCurrentVotingPeriod() {
-  // Get current time in UTC and adjust for daily reset hour boundary
-  const nowUtc = new Date();
-  
-  let currentBoundary;
-  if (nowUtc.getUTCHours() < CONFIG.DAILY_RESET_HOUR_UTC) {
-    // Before reset hour UTC, use previous day's boundary
-    currentBoundary = new Date(nowUtc);
-    currentBoundary.setUTCDate(currentBoundary.getUTCDate() - 1);
-    currentBoundary.setUTCHours(CONFIG.DAILY_RESET_HOUR_UTC, 0, 0, 0);
-  } else {
-    // After reset hour UTC, use today's boundary
-    currentBoundary = new Date(nowUtc);
-    currentBoundary.setUTCHours(CONFIG.DAILY_RESET_HOUR_UTC, 0, 0, 0);
-  }
-  
-  return {
-    date: currentBoundary.toISOString().split('T')[0],
-    boundary: currentBoundary
-  };
-}
-
-async function getDailyWordId() {
+async function getWordId(word) {
   try {
-    // Get total word count from database
-    const { count, error: countError } = await supabase
-      .from('words')
-      .select('*', { count: 'exact', head: true });
-
-    if (countError) throw countError;
-
-    // Calculate word index using same logic as word function
-    const { boundary } = getCurrentVotingPeriod();
-    const daysSinceEpoch = Math.floor((boundary - START_DATE) / (1000 * 60 * 60 * 24));
-    const wordIndex = daysSinceEpoch % count;
-    
-    // Get the specific word ID from database
+    // Look up the word ID by the word text
     const { data: wordData, error: wordError } = await supabase
       .from('words')
       .select('id')
-      .order('id')
-      .range(wordIndex, wordIndex)
+      .eq('word', word)
       .single();
 
-    if (wordError) throw wordError;
+    if (wordError) {
+      if (wordError.code === 'PGRST116') {
+        throw new Error('Word not found');
+      }
+      throw wordError;
+    }
 
     return wordData.id;
   } catch (error) {
-    console.error('Error getting daily word ID:', error);
+    console.error('Error getting word ID:', error);
     throw error;
   }
 }
 
-async function submitVote(r, g, b, fingerprint) {
+async function submitVote(r, g, b, word, fingerprint) {
   try {
-    const { date } = getCurrentVotingPeriod();
+    // Get the word ID
+    const wordId = await getWordId(word);
     
-    // Check if user already voted today
+    // Check if user already voted for this word
     const { data: existingVote, error: checkError } = await supabase
       .from('votes')
       .select('id')
       .eq('fingerprint', fingerprint)
-      .eq('vote_date', date)
+      .eq('word_id', wordId)
       .single();
 
     if (checkError && checkError.code !== 'PGRST116') { // PGRST116 = no rows found
@@ -81,11 +48,8 @@ async function submitVote(r, g, b, fingerprint) {
     }
 
     if (existingVote) {
-      throw new Error('User has already voted today');
+      throw new Error('User has already voted for this word');
     }
-
-    // Get today's word ID
-    const wordId = await getDailyWordId();
 
     // Insert the vote
     const { data, error } = await supabase
@@ -95,7 +59,7 @@ async function submitVote(r, g, b, fingerprint) {
         r: r,
         g: g,
         b: b,
-        vote_date: date,
+        vote_date: new Date().toISOString().split('T')[0], // Current date for logging
         fingerprint: fingerprint
       })
       .select()
@@ -109,7 +73,8 @@ async function submitVote(r, g, b, fingerprint) {
         r: r,
         g: g,
         b: b,
-        date: date
+        word: word,
+        word_id: wordId
       }
     };
   } catch (error) {
@@ -139,7 +104,7 @@ export const handler = async (event, context) => {
   if (event.httpMethod === 'POST') {
     try {
       const body = JSON.parse(event.body);
-      const { r, g, b, fingerprint } = body;
+      const { r, g, b, word, fingerprint } = body;
 
       // Validate input
       if (!fingerprint || typeof fingerprint !== 'string') {
@@ -147,6 +112,14 @@ export const handler = async (event, context) => {
           statusCode: 400,
           headers,
           body: JSON.stringify({ error: 'Fingerprint is required' }),
+        };
+      }
+
+      if (!word || typeof word !== 'string') {
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({ error: 'Word is required' }),
         };
       }
 
@@ -166,7 +139,7 @@ export const handler = async (event, context) => {
         };
       }
 
-      const result = await submitVote(r, g, b, fingerprint);
+      const result = await submitVote(r, g, b, word, fingerprint);
       
       return {
         statusCode: 201,
@@ -177,11 +150,19 @@ export const handler = async (event, context) => {
         body: JSON.stringify(result),
       };
     } catch (error) {
-      if (error.message === 'User has already voted today') {
+      if (error.message === 'User has already voted for this word') {
         return {
           statusCode: 429,
           headers,
-          body: JSON.stringify({ error: 'User has already voted today' }),
+          body: JSON.stringify({ error: 'User has already voted for this word' }),
+        };
+      }
+
+      if (error.message === 'Word not found') {
+        return {
+          statusCode: 404,
+          headers,
+          body: JSON.stringify({ error: 'Word not found' }),
         };
       }
 
