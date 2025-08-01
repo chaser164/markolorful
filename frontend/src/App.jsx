@@ -287,7 +287,7 @@ function App() {
   // Show color picker - open native color picker immediately
   const showColorChooser = () => {
     if (hasVotedToday) {
-      alert('You have already voted today! Come back tomorrow for the next word.')
+      // alert('You have already voted today! Come back tomorrow for the next word.')
       return
     }
     
@@ -360,9 +360,9 @@ function App() {
       setBackgroundColor(averageColor)
       setUserVotedColor({ r: rgb.r, g: rgb.g, b: rgb.b })
       setShowColorPicker(false)
-      alert('Your color vote has been recorded! Thank you for participating.')
+      // alert('Your color vote has been recorded! Thank you for participating.')
     } catch (error) {
-      alert(`Error: ${error.message}`)
+      // alert(`Error: ${error.message}`)
     }
   }
 
@@ -408,7 +408,7 @@ function App() {
   // Get new word (disabled - now shows daily word only)
   const handleWordClick = () => {
     if (wordData) {
-      alert(`Today's word is "${wordData.word}" (${wordData.index + 1}/${wordData.total_words})\nThis word changes every 24 hours!`)
+      // alert(`Today's word is "${wordData.word}" (${wordData.index + 1}/${wordData.total_words})\nThis word changes every 24 hours!`)
     }
   }
 
@@ -438,18 +438,13 @@ function App() {
     <div 
       className="navbar"
       style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
+        position: 'static',
         height: '60px',
-        backgroundColor: 'transparent',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'flex-start',
         gap: '40px',
         paddingLeft: '40px',
-        zIndex: 1000,
         color: currentView === 'home' ? textColor : '#000000'
       }}
     >
@@ -496,20 +491,27 @@ function App() {
           textUnderlineOffset: '4px'
         }}
       >
-        Info
+        About
       </button>
       </div>
   )
 
   return (
-    <>
+    <div 
+      className="app-wrapper"
+      style={{ 
+        backgroundColor: currentView === 'home' ? backgroundColor : '#ffffff',
+        color: currentView === 'home' ? textColor : '#000000',
+        minHeight: '100vh',
+        transition: 'background-color 0.6s cubic-bezier(0.4, 0, 0.2, 1)'
+      }}
+    >
       <Navbar />
       <div 
         className="app" 
         style={{ 
-          backgroundColor: currentView === 'home' ? backgroundColor : '#ffffff',
-          color: currentView === 'home' ? textColor : '#000000',
-          paddingTop: currentView === 'home' ? '60px' : '0px',
+          paddingTop: '0px',
+          backgroundColor: 'transparent',
           ...((currentView === 'history' || currentView === 'info') && {
             alignItems: 'flex-start',
             justifyContent: 'flex-start',
@@ -602,7 +604,7 @@ function App() {
                   </div>
                   
                   <div className="color-section">
-                    <p className="color-label">Community</p>
+                    <p className="color-label">Community Blend</p>
                     {(() => {
                       const avgColor = calculateAverageColor(todaysColors)
                       return (
@@ -649,7 +651,7 @@ function App() {
 
         {currentView === 'history' && (
           // HISTORY VIEW - Full Screen Layout
-          <div className="history-fullscreen" style={{ paddingTop: '80px' }}>
+          <div className="history-fullscreen" style={{ paddingTop: '20px' }}>
             {historyData.length > 0 ? (
               historyData.map((entry, index) => (
                 <div 
@@ -737,18 +739,29 @@ function App() {
         )}
 
         {currentView === 'info' && (
-          <div className="content" style={{ paddingTop: '80px' }}>
-            <h1 style={{ color: '#000000', fontSize: '32px', fontWeight: '300', letterSpacing: '-0.02em' }}>
-              Info
+          <div style={{ 
+            paddingTop: '20px', 
+            display: 'flex', 
+            flexDirection: 'column', 
+            alignItems: 'center',
+            justifyContent: 'center',
+            minHeight: 'calc(100vh - 80px)', // Account for navbar height
+            width: '100%',
+            maxWidth: '600px',
+            margin: '0 auto',
+            padding: '2rem'
+          }}>
+            <h1 style={{ color: '#000000', fontSize: '32px', fontWeight: '300', letterSpacing: '-0.02em', textAlign: 'left', width: '100%', marginBottom: '2rem' }}>
+              About
             </h1>
-            <div style={{ color: '#000000', fontSize: '18px', textAlign: 'center', maxWidth: '600px', lineHeight: '1.6' }}>
+            <div style={{ color: '#000000', fontSize: '18px', textAlign: 'left', lineHeight: '1.6', width: '100%' }}>
               <p>
-                Welcome to Markolorful! Each day brings a new word, and the community votes on colors to create a collective visual experience.
+                Welcome to <strong>Markolorful</strong>! Each day brings a new word generated using Markov chains, and the community votes on colors to create a collective visual experience.
               </p>
               
               {wordData && (
                 <div style={{ margin: '30px 0', padding: '20px', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
-                  <h3 style={{ margin: '0 0 10px 0', fontSize: '20px', fontWeight: '500' }}>Current Word</h3>
+                  <h3 style={{ margin: '0 0 10px 0', fontSize: '20px', fontWeight: '500' }}>Today's Word</h3>
                   <p style={{ margin: '5px 0', fontSize: '16px' }}>
                     <strong>{wordData.word}</strong> • Day {wordData.index + 1} • {wordData.date}
                   </p>
@@ -762,13 +775,37 @@ function App() {
               )}
 
               <p>
-                The background color represents the average of all community votes for that day's word. 
-                Click any color in "Today's Color Votes" to preview the community's collective choice.
+                After voting, you can check out the "Community Blend" to see the average color of all votes for that day's word.
+                The percentage similarity shows how close your vote is to the community blend.
+              </p>
+
+              <br />
+              <p>
+                Words are created using <strong>Markov chains</strong> - an algorithm that learns patterns from classic literature, song lyrics, and other texts to generate new, unique words that sound naturally interesting.
               </p>
               
               <p>
-                Visit the History tab to see how colors have evolved over time - each word gets its own colored timeline entry.
+                Visit the History tab to see how colors have evolved over time - each word gets its own blended color timeline entry.
               </p>
+
+              <div style={{ margin: '40px 0', padding: '20px', backgroundColor: '#f0f8ff', borderRadius: '8px', border: '2px solid #e1f5fe' }}>
+                <h3 style={{ margin: '0 0 15px 0', fontSize: '20px', fontWeight: '500' }}>Open Source</h3>
+                <p style={{ margin: '10px 0', fontSize: '16px' }}>
+                  This project is open source! Check out the code, contribute features, or learn how the Markov chain algorithm works on{' '}
+                  <a 
+                    href="https://github.com/chasereynders/markov-chain"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: '#1976d2', textDecoration: 'underline' }}
+                  >
+                    GitHub
+                  </a>
+                  .
+                </p>
+                <p style={{ margin: '5px 0 0 0', fontSize: '14px', opacity: 0.8 }}>
+                  Contributions welcome!
+                </p>
+              </div>
             </div>
           </div>
         )}
@@ -782,7 +819,7 @@ function App() {
           className="hidden-color-input"
         />
       </div>
-    </>
+    </div>
   )
 }
 
