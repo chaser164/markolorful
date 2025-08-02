@@ -23,6 +23,10 @@ function App() {
   const [historyData, setHistoryData] = useState([])
   const [historyLoading, setHistoryLoading] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [userVotedColorName, setUserVotedColorName] = useState(null)
+  const [communityBlendColorName, setCommunityBlendColorName] = useState(null)
+  const [mostPopularColor, setMostPopularColor] = useState(null)
+  const [mostPopularColorName, setMostPopularColorName] = useState(null)
   const colorInputRef = useRef(null)
 
   const API_BASE = CONFIG.API_BASE
@@ -63,6 +67,13 @@ function App() {
         // Update state based on backend response
         setHasVotedToday(hasVoted)
         setUserVotedColor(hasVoted ? userVote : null)
+        
+        // Set the user's color name if available
+        if (hasVoted && userVote && userVote.color_name) {
+          setUserVotedColorName(userVote.color_name)
+        } else {
+          setUserVotedColorName(null)
+        }
         
         // Sync localStorage with backend state
         const voteKey = `vote_${fingerprint}_${word}`
@@ -133,20 +144,114 @@ function App() {
     return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)
   }
 
-  // Calculate color similarity (0-100%)
-  const calculateColorSimilarity = (color1, color2) => {
-    const rDiff = Math.abs(color1.r - color2.r)
-    const gDiff = Math.abs(color1.g - color2.g)
-    const bDiff = Math.abs(color1.b - color2.b)
-    const maxDiff = Math.sqrt(3 * 255 * 255) // Maximum possible difference
-    const actualDiff = Math.sqrt(rDiff * rDiff + gDiff * gDiff + bDiff * bDiff)
-    return Math.round((1 - actualDiff / maxDiff) * 100)
-  }
-
   // Get average color hex from RGB object
   const getAverageColorHex = (averageColor) => {
     if (!averageColor) return '#ffffff'
     return rgbToHex(averageColor.r, averageColor.g, averageColor.b)
+  }
+
+  // Fetch color name from the color API
+  const fetchColorName = async (r, g, b) => {
+    try {
+      const response = await fetch(`https://www.thecolorapi.com/id?rgb=rgb(${r},${g},${b})`)
+      if (!response.ok) {
+        console.error('Color API request failed:', response.status, response.statusText)
+        return null
+      }
+      const data = await response.json()
+      return data?.name?.value || null
+    } catch (error) {
+      console.error('Error fetching color name from API:', error)
+      return null
+    }
+  }
+
+  // Calculate the most popular (mode) color from votes
+  const calculateMostPopularColor = (votes, userColor = null) => {
+    if (!votes || votes.length === 0) {
+      return null
+    }
+
+    // If only one vote, return it
+    if (votes.length === 1) {
+      return {
+        r: votes[0].r,
+        g: votes[0].g,
+        b: votes[0].b,
+        color_name: votes[0].color_name
+      }
+    }
+
+    // Count occurrences of each color name (not RGB)
+    const colorNameCounts = {}
+    votes.forEach(vote => {
+      if (vote.color_name) {
+        const colorName = vote.color_name
+        if (colorNameCounts[colorName]) {
+          colorNameCounts[colorName].count++
+          colorNameCounts[colorName].variants.push(vote)
+        } else {
+          colorNameCounts[colorName] = {
+            count: 1,
+            variants: [vote]
+          }
+        }
+      }
+    })
+
+    // Find the maximum count by color name
+    const maxCount = Math.max(...Object.values(colorNameCounts).map(c => c.count))
+
+    // If max count is 1, all color names are equally popular - pick one randomly
+    if (maxCount === 1) {
+      const randomIndex = Math.floor(Math.random() * votes.length)
+      return {
+        r: votes[randomIndex].r,
+        g: votes[randomIndex].g,
+        b: votes[randomIndex].b,
+        color_name: votes[randomIndex].color_name
+      }
+    }
+
+    // Get all color names with the maximum count
+    const mostPopularColorNames = Object.keys(colorNameCounts).filter(name => 
+      colorNameCounts[name].count === maxCount
+    )
+
+    // If tie between color names, pick one randomly
+    const randomNameIndex = Math.floor(Math.random() * mostPopularColorNames.length)
+    const winningColorName = mostPopularColorNames[randomNameIndex]
+    const winningColorVariants = colorNameCounts[winningColorName].variants
+
+    // If user's color matches the winning color name, prefer their exact RGB
+    if (userColor && userColor.color_name === winningColorName) {
+      return {
+        r: userColor.r,
+        g: userColor.g,
+        b: userColor.b,
+        color_name: winningColorName
+      }
+    }
+
+    // Otherwise, pick the earliest variant of the winning color name
+    const sortedVariants = winningColorVariants.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+    const selectedVariant = sortedVariants[0]
+
+    return {
+      r: selectedVariant.r,
+      g: selectedVariant.g,
+      b: selectedVariant.b,
+      color_name: winningColorName
+    }
+  }
+
+  // Calculate vote count for a specific color name (not RGB)
+  const getColorNameVoteCount = (colorName, votes) => {
+    if (!colorName || !votes || votes.length === 0) {
+      return 0
+    }
+    
+    return votes.filter(vote => vote.color_name === colorName).length
   }
 
   // Load daily word from backend
@@ -214,9 +319,15 @@ function App() {
     if (fingerprint !== null && todaysVoteCount >= 0 && !isLoading) {
       // Immediate background color to prevent flash
       if (hasVotedToday && todaysVoteCount > 0) {
-        // User has voted - set to average of all today's votes
-        const averageColorHex = getAverageColorHex(todaysAverageColor)
-        setBackgroundColor(averageColorHex)
+        // User has voted - set to their voted color, not the community blend
+        if (userVotedColor) {
+          const userColorHex = rgbToHex(userVotedColor.r, userVotedColor.g, userVotedColor.b)
+          setBackgroundColor(userColorHex)
+        } else {
+          // Fallback to community blend if user color not available
+          const averageColorHex = getAverageColorHex(todaysAverageColor)
+          setBackgroundColor(averageColorHex)
+        }
       } else {
         // User hasn't voted or no votes yet - set to white background
         setBackgroundColor('#ffffff')
@@ -227,7 +338,7 @@ function App() {
         setHasAnimated(true)
       }, 50)
     }
-  }, [fingerprint, todaysVoteCount, todaysAverageColor, hasVotedToday, isLoading])
+  }, [fingerprint, todaysVoteCount, todaysAverageColor, hasVotedToday, isLoading, userVotedColor])
 
   // Calculate text color based on background brightness
   const getContrastColor = (hexColor) => {
@@ -246,6 +357,28 @@ function App() {
     setTextColor(newTextColor)
   }, [backgroundColor])
 
+  // Fetch community blend color name when average color changes
+  useEffect(() => {
+    const fetchCommunityColorName = async () => {
+      if (todaysAverageColor && hasVotedToday) {
+        const colorName = await fetchColorName(todaysAverageColor.r, todaysAverageColor.g, todaysAverageColor.b)
+        setCommunityBlendColorName(colorName)
+      }
+    }
+    
+    fetchCommunityColorName()
+  }, [todaysAverageColor, hasVotedToday])
+
+  // Calculate most popular color when word data changes
+  useEffect(() => {
+    if (wordData && wordData.votes && hasVotedToday) {
+      const mostPopular = calculateMostPopularColor(wordData.votes, userVotedColor)
+      if (mostPopular) {
+        setMostPopularColor(mostPopular)
+        setMostPopularColorName(mostPopular.color_name)
+      }
+    }
+  }, [wordData, hasVotedToday, userVotedColor])
 
 
   // Handle color picker change (live preview)
@@ -310,6 +443,11 @@ function App() {
       setTodaysVoteCount(todaysVoteCount + 1)
       setUserVotedColor({ r: rgb.r, g: rgb.g, b: rgb.b })
       
+      // Store the color name from the backend response
+      if (result.vote && result.vote.color_name) {
+        setUserVotedColorName(result.vote.color_name)
+      }
+      
       // Update average color calculation
       if (todaysAverageColor) {
         const newTotalVotes = todaysVoteCount + 1
@@ -322,6 +460,27 @@ function App() {
       } else {
         // First vote
         setTodaysAverageColor({ r: rgb.r, g: rgb.g, b: rgb.b })
+      }
+
+      // Update vote data and recalculate most popular color
+      if (wordData && wordData.votes) {
+        const newVote = {
+          r: rgb.r,
+          g: rgb.g,
+          b: rgb.b,
+          color_name: result.vote?.color_name || null,
+          created_at: result.vote?.created_at || new Date().toISOString()
+        }
+        const updatedVotes = [...wordData.votes, newVote]
+        const updatedWordData = { ...wordData, votes: updatedVotes }
+        setWordData(updatedWordData)
+        
+        // Recalculate most popular color
+        const mostPopular = calculateMostPopularColor(updatedVotes, userVotedColor)
+        if (mostPopular) {
+          setMostPopularColor(mostPopular)
+          setMostPopularColorName(mostPopular.color_name)
+        }
       }
       
       return result
@@ -361,7 +520,24 @@ function App() {
       const response = await fetch(`${API_BASE}/history`)
       if (response.ok) {
         const data = await response.json()
-        setHistoryData(data.history || [])
+        const history = data.history || []
+        
+        // Fetch color names for each history entry
+        const historyWithColorNames = await Promise.all(
+          history.map(async (entry) => {
+            if (entry.averageColor) {
+              const colorName = await fetchColorName(
+                entry.averageColor.r, 
+                entry.averageColor.g, 
+                entry.averageColor.b
+              )
+              return { ...entry, colorName }
+            }
+            return entry
+          })
+        )
+        
+        setHistoryData(historyWithColorNames)
       }
     } catch (error) {
       console.error('Error loading history:', error)
@@ -656,9 +832,30 @@ function App() {
             {/* Show vote comparison after user has voted */}
             {hasVotedToday && userVotedColor && todaysVoteCount > 0 && (
               <div className={`vote-comparison ${!isLoading ? 'fade-in-up' : ''}`}>
+                {/* Total vote count above all colors */}
+                <p className="total-votes" style={{ 
+                  fontSize: '16px', 
+                  marginBottom: '1rem', 
+                  opacity: 0.7,
+                  textAlign: 'center',
+                  fontWeight: '500',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px'
+                }}>
+                  {todaysVoteCount} vote{todaysVoteCount !== 1 ? 's' : ''} today
+                </p>
+                
+                {/* Horizontal line */}
+                <div style={{ 
+                  width: '100%',
+                  height: '1px',
+                  backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                  marginBottom: '1.5rem'
+                }} />
+                
                 <div className="comparison-row">
                   <div className="color-section">
-                    <p className="color-label">Your Vote</p>
+                    <p className="color-label">Your<br />Vote</p>
                     <div 
                       className="color-box"
                       style={{
@@ -673,8 +870,30 @@ function App() {
                       onClick={() => setBackgroundColor(rgbToHex(userVotedColor.r, userVotedColor.g, userVotedColor.b))}
                       title="Click to use your color as background"
                     />
+                    {userVotedColorName && (
+                      <p className="color-name" style={{ 
+                        fontSize: '14px', 
+                        marginTop: '8px', 
+                        opacity: 0.8,
+                        textAlign: 'center',
+                        fontWeight: '500',
+                        fontStyle: 'italic'
+                      }}>
+                        "{userVotedColorName}"
+                      </p>
+                    )}
+                    <p className="vote-count" style={{ 
+                      fontSize: '12px', 
+                      marginTop: '4px', 
+                      opacity: 0.6,
+                      textAlign: 'center',
+                      fontWeight: '400'
+                    }}>
+                      {wordData && wordData.votes ? getColorNameVoteCount(userVotedColorName, wordData.votes) : 1} vote{wordData && wordData.votes && getColorNameVoteCount(userVotedColorName, wordData.votes) !== 1 ? 's' : ''}
+                    </p>
                   </div>
-                  
+
+                  {/* Community Blend in the middle */}
                   <div className="color-section">
                     <p className="color-label">Community Blend</p>
                     {(() => {
@@ -696,23 +915,72 @@ function App() {
                         />
                       )
                     })()}
+                    {communityBlendColorName && (
+                      <p className="color-name" style={{ 
+                        fontSize: '14px', 
+                        marginTop: '8px', 
+                        opacity: 0.8,
+                        textAlign: 'center',
+                        fontWeight: '500',
+                        fontStyle: 'italic'
+                      }}>
+                        "{communityBlendColorName}"
+                      </p>
+                    )}
+                    {/* Invisible placeholder to maintain alignment */}
+                    <p style={{ 
+                      fontSize: '12px', 
+                      marginTop: '4px', 
+                      opacity: 0,
+                      textAlign: 'center',
+                      fontWeight: '400',
+                      visibility: 'hidden'
+                    }}>
+                      placeholder
+                    </p>
                   </div>
-                </div>
-                
-                <div className="similarity-stats">
-                  {(() => {
-                    const similarity = todaysAverageColor ? calculateColorSimilarity(userVotedColor, todaysAverageColor) : 100
-                    return (
-                      <>
-                        <div className="similarity-percentage">
-                          {similarity}% similarity
-                        </div>
-                        <div className="vote-count">
-                          {todaysVoteCount} vote{todaysVoteCount !== 1 ? 's' : ''} today
-                        </div>
-                      </>
-                    )
-                  })()}
+
+                  {/* Most Popular Color Box */}
+                  {mostPopularColor && (
+                    <div className="color-section">
+                      <p className="color-label">Most Popular</p>
+                      <div 
+                        className="color-box"
+                        style={{
+                          backgroundColor: `rgb(${mostPopularColor.r}, ${mostPopularColor.g}, ${mostPopularColor.b})`,
+                          width: '80px',
+                          height: '80px',
+                          borderRadius: '12px',
+                          border: '3px solid rgba(255, 255, 255, 0.3)',
+                          cursor: 'pointer',
+                          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)'
+                        }}
+                        onClick={() => setBackgroundColor(rgbToHex(mostPopularColor.r, mostPopularColor.g, mostPopularColor.b))}
+                        title="Click to use most popular color as background"
+                      />
+                      {mostPopularColorName && (
+                        <p className="color-name" style={{ 
+                          fontSize: '14px', 
+                          marginTop: '8px', 
+                          opacity: 0.8,
+                          textAlign: 'center',
+                          fontWeight: '500',
+                          fontStyle: 'italic'
+                        }}>
+                          "{mostPopularColorName}"
+                        </p>
+                      )}
+                      <p className="vote-count" style={{ 
+                        fontSize: '12px', 
+                        marginTop: '4px', 
+                        opacity: 0.6,
+                        textAlign: 'center',
+                        fontWeight: '400'
+                      }}>
+                        {wordData && wordData.votes ? getColorNameVoteCount(mostPopularColorName, wordData.votes) : 0} vote{wordData && wordData.votes && getColorNameVoteCount(mostPopularColorName, wordData.votes) !== 1 ? 's' : ''}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -773,6 +1041,23 @@ function App() {
                   >
                     Word {entry.day} • {entry.date}
                   </div>
+                  {entry.colorName && (
+                    <div 
+                      className="history-color-name"
+                      style={{
+                        fontSize: '12px',
+                        opacity: 0.6,
+                        color: entry.averageColor ? getContrastColor(
+                          `rgb(${entry.averageColor.r}, ${entry.averageColor.g}, ${entry.averageColor.b})`
+                        ) : '#000000',
+                        textAlign: 'center',
+                        marginTop: '4px',
+                        fontStyle: 'italic'
+                      }}
+                    >
+                      "{entry.colorName}"
+                    </div>
+                  )}
                   <div 
                     className="history-votes-fullscreen"
                     style={{
@@ -845,11 +1130,10 @@ function App() {
               )}
 
               <p>
-                After voting, you can check out the "Community Blend" to see the average color of all votes for that day's word.
-                The percentage similarity shows how close your vote is to the community blend.
+                After voting, you can check out the "Community Blend" to see the average color of all votes for that day's word, as well as the "Most Popular" color voted for that day.
               </p>
 
-              < br />
+              <br />
 
               <p>
                 To keep voting fair while maintaining a frictionless experience, we use <strong>browser fingerprinting</strong> to ensure each device can vote only once per word. This creates a low-friction, cooperative experience with no sign-in required - just you, the word, and your color choice. While determined users could potentially work around this system, my hope is that users will vote with integrity!
@@ -864,6 +1148,21 @@ function App() {
               
               <p>
                 Visit the History tab to see how colors have evolved over time - each word gets its own blended color timeline entry.
+              </p>
+
+              <br />
+              
+              <p>
+                Color names are provided by{' '}
+                <a 
+                  href="https://www.thecolorapi.com/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: '#1976d2', textDecoration: 'underline' }}
+                >
+                  The Color API
+                </a>
+                , which translates RGB values into natural language color names like "Deep Ocean Blue" or "Forest Green."
               </p>
 
               <div style={{ margin: '40px 0', padding: '20px', backgroundColor: '#f0f8ff', borderRadius: '8px', border: '2px solid #e1f5fe' }}>
