@@ -306,9 +306,15 @@ function App() {
     if (fingerprint !== null && todaysVoteCount >= 0 && !isLoading) {
       // Immediate background color to prevent flash
       if (hasVotedToday && todaysVoteCount > 0) {
-        // User has voted - set to average of all today's votes
-        const averageColorHex = getAverageColorHex(todaysAverageColor)
-        setBackgroundColor(averageColorHex)
+        // User has voted - set to their voted color, not the community blend
+        if (userVotedColor) {
+          const userColorHex = rgbToHex(userVotedColor.r, userVotedColor.g, userVotedColor.b)
+          setBackgroundColor(userColorHex)
+        } else {
+          // Fallback to community blend if user color not available
+          const averageColorHex = getAverageColorHex(todaysAverageColor)
+          setBackgroundColor(averageColorHex)
+        }
       } else {
         // User hasn't voted or no votes yet - set to white background
         setBackgroundColor('#ffffff')
@@ -319,7 +325,7 @@ function App() {
         setHasAnimated(true)
       }, 50)
     }
-  }, [fingerprint, todaysVoteCount, todaysAverageColor, hasVotedToday, isLoading])
+  }, [fingerprint, todaysVoteCount, todaysAverageColor, hasVotedToday, isLoading, userVotedColor])
 
   // Calculate text color based on background brightness
   const getContrastColor = (hexColor) => {
@@ -500,7 +506,24 @@ function App() {
       const response = await fetch(`${API_BASE}/history`)
       if (response.ok) {
         const data = await response.json()
-        setHistoryData(data.history || [])
+        const history = data.history || []
+        
+        // Fetch color names for each history entry
+        const historyWithColorNames = await Promise.all(
+          history.map(async (entry) => {
+            if (entry.averageColor) {
+              const colorName = await fetchColorName(
+                entry.averageColor.r, 
+                entry.averageColor.g, 
+                entry.averageColor.b
+              )
+              return { ...entry, colorName }
+            }
+            return entry
+          })
+        )
+        
+        setHistoryData(historyWithColorNames)
       }
     } catch (error) {
       console.error('Error loading history:', error)
@@ -818,7 +841,7 @@ function App() {
                 
                 <div className="comparison-row">
                   <div className="color-section">
-                    <p className="color-label">Your Vote</p>
+                    <p className="color-label">Your<br />Vote</p>
                     <div 
                       className="color-box"
                       style={{
@@ -839,9 +862,10 @@ function App() {
                         marginTop: '8px', 
                         opacity: 0.8,
                         textAlign: 'center',
-                        fontWeight: '500'
+                        fontWeight: '500',
+                        fontStyle: 'italic'
                       }}>
-                        {userVotedColorName}
+                        "{userVotedColorName}"
                       </p>
                     )}
                     <p className="vote-count" style={{ 
@@ -883,9 +907,10 @@ function App() {
                         marginTop: '8px', 
                         opacity: 0.8,
                         textAlign: 'center',
-                        fontWeight: '500'
+                        fontWeight: '500',
+                        fontStyle: 'italic'
                       }}>
-                        {communityBlendColorName}
+                        "{communityBlendColorName}"
                       </p>
                     )}
                     {/* Invisible placeholder to maintain alignment */}
@@ -925,9 +950,10 @@ function App() {
                           marginTop: '8px', 
                           opacity: 0.8,
                           textAlign: 'center',
-                          fontWeight: '500'
+                          fontWeight: '500',
+                          fontStyle: 'italic'
                         }}>
-                          {mostPopularColorName}
+                          "{mostPopularColorName}"
                         </p>
                       )}
                       <p className="vote-count" style={{ 
@@ -1001,6 +1027,23 @@ function App() {
                   >
                     Word {entry.day} • {entry.date}
                   </div>
+                  {entry.colorName && (
+                    <div 
+                      className="history-color-name"
+                      style={{
+                        fontSize: '12px',
+                        opacity: 0.6,
+                        color: entry.averageColor ? getContrastColor(
+                          `rgb(${entry.averageColor.r}, ${entry.averageColor.g}, ${entry.averageColor.b})`
+                        ) : '#000000',
+                        textAlign: 'center',
+                        marginTop: '4px',
+                        fontStyle: 'italic'
+                      }}
+                    >
+                      "{entry.colorName}"
+                    </div>
+                  )}
                   <div 
                     className="history-votes-fullscreen"
                     style={{
@@ -1073,7 +1116,7 @@ function App() {
               )}
 
               <p>
-                After voting, you can check out the "Community Blend" to see the average color of all votes for that day's word.
+                After voting, you can check out the "Community Blend" to see the average color of all votes for that day's word, as well as the "Most Popular" color voted for that day.
               </p>
 
               <br />
@@ -1091,6 +1134,21 @@ function App() {
               
               <p>
                 Visit the History tab to see how colors have evolved over time - each word gets its own blended color timeline entry.
+              </p>
+
+              <br />
+              
+              <p>
+                Color names are provided by{' '}
+                <a 
+                  href="https://www.thecolorapi.com/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: '#1976d2', textDecoration: 'underline' }}
+                >
+                  The Color API
+                </a>
+                , which translates RGB values into natural language color names like "Deep Ocean Blue" or "Forest Green."
               </p>
 
               <div style={{ margin: '40px 0', padding: '20px', backgroundColor: '#f0f8ff', borderRadius: '8px', border: '2px solid #e1f5fe' }}>
