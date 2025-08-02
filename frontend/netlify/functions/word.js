@@ -70,10 +70,10 @@ async function getDailyWord() {
 
     if (wordError) throw wordError;
 
-    // Get all votes for this word (including color names for mode calculation)
+    // Get all votes for this word (including color names and timestamps for mode calculation)
     const { data: votes, error: votesError } = await supabase
       .from('votes')
-      .select('r, g, b, color_name')
+      .select('r, g, b, color_name, created_at')
       .eq('word_id', wordData.id);
 
     if (votesError) throw votesError;

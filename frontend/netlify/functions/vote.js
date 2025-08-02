@@ -95,6 +95,7 @@ async function submitVote(r, g, b, word, fingerprint) {
         g: g,
         b: b,
         color_name: colorName,
+        created_at: data.created_at,
         word: word,
         word_id: wordId
       }

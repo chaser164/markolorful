@@ -167,7 +167,7 @@ function App() {
   }
 
   // Calculate the most popular (mode) color from votes
-  const calculateMostPopularColor = (votes) => {
+  const calculateMostPopularColor = (votes, userColor = null) => {
     if (!votes || votes.length === 0) {
       return null
     }
@@ -182,27 +182,27 @@ function App() {
       }
     }
 
-    // Count occurrences of each color (using RGB as key)
-    const colorCounts = {}
+    // Count occurrences of each color name (not RGB)
+    const colorNameCounts = {}
     votes.forEach(vote => {
-      const colorKey = `${vote.r},${vote.g},${vote.b}`
-      if (colorCounts[colorKey]) {
-        colorCounts[colorKey].count++
-      } else {
-        colorCounts[colorKey] = {
-          count: 1,
-          r: vote.r,
-          g: vote.g,
-          b: vote.b,
-          color_name: vote.color_name
+      if (vote.color_name) {
+        const colorName = vote.color_name
+        if (colorNameCounts[colorName]) {
+          colorNameCounts[colorName].count++
+          colorNameCounts[colorName].variants.push(vote)
+        } else {
+          colorNameCounts[colorName] = {
+            count: 1,
+            variants: [vote]
+          }
         }
       }
     })
 
-    // Find the maximum count
-    const maxCount = Math.max(...Object.values(colorCounts).map(c => c.count))
+    // Find the maximum count by color name
+    const maxCount = Math.max(...Object.values(colorNameCounts).map(c => c.count))
 
-    // If max count is 1, all colors are equally popular - pick one randomly
+    // If max count is 1, all color names are equally popular - pick one randomly
     if (maxCount === 1) {
       const randomIndex = Math.floor(Math.random() * votes.length)
       return {
@@ -213,32 +213,45 @@ function App() {
       }
     }
 
-    // Get all colors with the maximum count
-    const mostPopularColors = Object.values(colorCounts).filter(c => c.count === maxCount)
+    // Get all color names with the maximum count
+    const mostPopularColorNames = Object.keys(colorNameCounts).filter(name => 
+      colorNameCounts[name].count === maxCount
+    )
 
-    // If tie, pick one randomly
-    const randomIndex = Math.floor(Math.random() * mostPopularColors.length)
-    const selected = mostPopularColors[randomIndex]
+    // If tie between color names, pick one randomly
+    const randomNameIndex = Math.floor(Math.random() * mostPopularColorNames.length)
+    const winningColorName = mostPopularColorNames[randomNameIndex]
+    const winningColorVariants = colorNameCounts[winningColorName].variants
+
+    // If user's color matches the winning color name, prefer their exact RGB
+    if (userColor && userColor.color_name === winningColorName) {
+      return {
+        r: userColor.r,
+        g: userColor.g,
+        b: userColor.b,
+        color_name: winningColorName
+      }
+    }
+
+    // Otherwise, pick the earliest variant of the winning color name
+    const sortedVariants = winningColorVariants.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+    const selectedVariant = sortedVariants[0]
 
     return {
-      r: selected.r,
-      g: selected.g,
-      b: selected.b,
-      color_name: selected.color_name
+      r: selectedVariant.r,
+      g: selectedVariant.g,
+      b: selectedVariant.b,
+      color_name: winningColorName
     }
   }
 
-  // Calculate vote count for a specific color
-  const getColorVoteCount = (targetColor, votes) => {
-    if (!targetColor || !votes || votes.length === 0) {
+  // Calculate vote count for a specific color name (not RGB)
+  const getColorNameVoteCount = (colorName, votes) => {
+    if (!colorName || !votes || votes.length === 0) {
       return 0
     }
     
-    return votes.filter(vote => 
-      vote.r === targetColor.r && 
-      vote.g === targetColor.g && 
-      vote.b === targetColor.b
-    ).length
+    return votes.filter(vote => vote.color_name === colorName).length
   }
 
   // Load daily word from backend
@@ -359,13 +372,13 @@ function App() {
   // Calculate most popular color when word data changes
   useEffect(() => {
     if (wordData && wordData.votes && hasVotedToday) {
-      const mostPopular = calculateMostPopularColor(wordData.votes)
+      const mostPopular = calculateMostPopularColor(wordData.votes, userVotedColor)
       if (mostPopular) {
         setMostPopularColor(mostPopular)
         setMostPopularColorName(mostPopular.color_name)
       }
     }
-  }, [wordData, hasVotedToday])
+  }, [wordData, hasVotedToday, userVotedColor])
 
 
   // Handle color picker change (live preview)
@@ -455,14 +468,15 @@ function App() {
           r: rgb.r,
           g: rgb.g,
           b: rgb.b,
-          color_name: result.vote?.color_name || null
+          color_name: result.vote?.color_name || null,
+          created_at: result.vote?.created_at || new Date().toISOString()
         }
         const updatedVotes = [...wordData.votes, newVote]
         const updatedWordData = { ...wordData, votes: updatedVotes }
         setWordData(updatedWordData)
         
         // Recalculate most popular color
-        const mostPopular = calculateMostPopularColor(updatedVotes)
+        const mostPopular = calculateMostPopularColor(updatedVotes, userVotedColor)
         if (mostPopular) {
           setMostPopularColor(mostPopular)
           setMostPopularColorName(mostPopular.color_name)
@@ -875,7 +889,7 @@ function App() {
                       textAlign: 'center',
                       fontWeight: '400'
                     }}>
-                      {wordData && wordData.votes ? getColorVoteCount(userVotedColor, wordData.votes) : 1} vote{wordData && wordData.votes && getColorVoteCount(userVotedColor, wordData.votes) !== 1 ? 's' : ''}
+                      {wordData && wordData.votes ? getColorNameVoteCount(userVotedColorName, wordData.votes) : 1} vote{wordData && wordData.votes && getColorNameVoteCount(userVotedColorName, wordData.votes) !== 1 ? 's' : ''}
                     </p>
                   </div>
 
@@ -963,7 +977,7 @@ function App() {
                         textAlign: 'center',
                         fontWeight: '400'
                       }}>
-                        {wordData && wordData.votes ? getColorVoteCount(mostPopularColor, wordData.votes) : 0} vote{wordData && wordData.votes && getColorVoteCount(mostPopularColor, wordData.votes) !== 1 ? 's' : ''}
+                        {wordData && wordData.votes ? getColorNameVoteCount(mostPopularColorName, wordData.votes) : 0} vote{wordData && wordData.votes && getColorNameVoteCount(mostPopularColorName, wordData.votes) !== 1 ? 's' : ''}
                       </p>
                     </div>
                   )}
