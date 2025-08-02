@@ -70,10 +70,10 @@ async function getDailyWord() {
 
     if (wordError) throw wordError;
 
-    // Get all votes for this word (just need RGB values for averaging)
+    // Get all votes for this word (including color names for mode calculation)
     const { data: votes, error: votesError } = await supabase
       .from('votes')
-      .select('r, g, b')
+      .select('r, g, b, color_name')
       .eq('word_id', wordData.id);
 
     if (votesError) throw votesError;
@@ -94,7 +94,8 @@ async function getDailyWord() {
       days_since_epoch: daysSinceEpoch,
       next_change_utc: nextBoundary.toISOString(),
       vote_count: votes ? votes.length : 0,
-      average_color: averageColor
+      average_color: averageColor,
+      votes: votes || [] // Include individual votes for mode calculation
     };
   } catch (error) {
     console.error('Error fetching daily word:', error);

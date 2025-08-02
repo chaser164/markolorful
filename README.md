@@ -90,4 +90,3 @@ The system draws from diverse literary sources:
 
 # TODO
 - consider adding a supabase function / reconfiguring history logic to compress data (?)
-- website logo / Title 

@@ -30,6 +30,23 @@ async function getWordId(word) {
   }
 }
 
+async function getColorName(r, g, b) {
+  try {
+    const response = await fetch(`https://www.thecolorapi.com/id?rgb=rgb(${r},${g},${b})`);
+    
+    if (!response.ok) {
+      console.error('Color API request failed:', response.status, response.statusText);
+      return null; // Return null if API fails, we'll handle this gracefully
+    }
+    
+    const data = await response.json();
+    return data?.name?.value || null;
+  } catch (error) {
+    console.error('Error fetching color name from API:', error);
+    return null; // Return null if API fails, we'll handle this gracefully
+  }
+}
+
 async function submitVote(r, g, b, word, fingerprint) {
   try {
     // Get the word ID
@@ -51,6 +68,9 @@ async function submitVote(r, g, b, word, fingerprint) {
       throw new Error('User has already voted for this word');
     }
 
+    // Get the color name from the color API
+    const colorName = await getColorName(r, g, b);
+
     // Insert the vote
     const { data, error } = await supabase
       .from('votes')
@@ -59,6 +79,7 @@ async function submitVote(r, g, b, word, fingerprint) {
         r: r,
         g: g,
         b: b,
+        color_name: colorName, // Add the color name to the database
         vote_date: new Date().toISOString().split('T')[0], // Current date for logging
         fingerprint: fingerprint
       })
@@ -73,6 +94,7 @@ async function submitVote(r, g, b, word, fingerprint) {
         r: r,
         g: g,
         b: b,
+        color_name: colorName,
         word: word,
         word_id: wordId
       }

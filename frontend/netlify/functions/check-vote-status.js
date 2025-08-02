@@ -79,7 +79,7 @@ export const handler = async (event, context) => {
     // Check if user has already voted for this word
     const { data: existingVote, error: voteError } = await supabase
       .from('votes')
-      .select('r, g, b')
+      .select('r, g, b, color_name')
       .eq('fingerprint', fingerprint)
       .eq('word_id', wordId)
       .single()
@@ -93,7 +93,12 @@ export const handler = async (event, context) => {
       headers,
       body: JSON.stringify({
         hasVoted: !!existingVote,
-        userVote: existingVote ? { r: existingVote.r, g: existingVote.g, b: existingVote.b } : null,
+        userVote: existingVote ? { 
+          r: existingVote.r, 
+          g: existingVote.g, 
+          b: existingVote.b,
+          color_name: existingVote.color_name 
+        } : null,
         word: word,
         word_id: wordId
       })
