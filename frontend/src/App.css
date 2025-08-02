@@ -463,10 +463,12 @@ html, body {
 
 .comparison-row {
   display: flex;
-  justify-content: center;
+  justify-content: space-between;
   align-items: flex-end;
-  gap: 3rem;
+  gap: 2rem;
   margin: 1.5rem 0;
+  width: 100%;
+  max-width: 650px;
 }
 
 .color-section {
@@ -494,36 +496,15 @@ html, body {
   box-shadow: 0 8px 25px rgba(0, 0, 0, 0.25) !important;
 }
 
-.similarity-stats {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-  margin-top: 1.5rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-.similarity-percentage {
-  font-size: 1.25rem;
-  font-weight: 600;
-  opacity: 0.9;
-}
-
-.vote-count {
-  font-size: 0.85rem;
-  opacity: 0.6;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
 /* Page load animations */
 @keyframes contentFadeIn {
   from {
     opacity: 0;
+    transform: translateY(10px);
   }
   to {
     opacity: 1;
+    transform: translateY(0);
   }
 }
 
