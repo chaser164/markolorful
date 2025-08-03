@@ -1,7 +1,7 @@
 # netlify.toml
 [build]
     command = "npm run build" # Command to build your React app
-    publish = "build"         # Directory where your React app's build output is located
+    publish = "dist"         # Directory where your React app's build output is located
 
 [functions]
     directory = "netlify/functions" # Path to your Netlify Functions 
